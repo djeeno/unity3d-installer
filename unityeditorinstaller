@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+set -eE -o pipefail
+
+export  stderrPipeDebug="awk \"{print \\\"\\\\033[00m\$(date +%Y-%m-%dT%H:%M:%S%z) [  debug] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
+export stderrPipeNotice="awk \"{print \\\"\\\\033[01m\$(date +%Y-%m-%dT%H:%M:%S%z) [ notice] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
+export  stderrPipeError="awk \"{print \\\"\\\\033[31m\$(date +%Y-%m-%dT%H:%M:%S%z) [  error] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
+export     stderrPipeOK="awk \"{print \\\"\\\\033[32m\$(date +%Y-%m-%dT%H:%M:%S%z) [     ok] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
+export   stderrPipeWarn="awk \"{print \\\"\\\\033[33m\$(date +%Y-%m-%dT%H:%M:%S%z) [warning] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
+export   stderrPipeInfo="awk \"{print \\\"\\\\033[34m\$(date +%Y-%m-%dT%H:%M:%S%z) [   info] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
+
+export apt_update_cmd="last=\$(stat /var/lib/apt/lists/* 2>/dev/null | awk -F\"Change:\" \"/Change:/ {print \\\$2}\" | sort | tail -n 1); [ 43200 -ge \$((\$(date +%s)-\$(date -d\"\${last:=1970-1-1}\" +%s))) ] || command apt update"
+
+# env
+export DEBIAN_FRONTEND=noninteractive
+export DEBCONF_NONINTERACTIVE_SEEN=true
+
+# const
+export PROG_NAME=unityeditorinstaller
+export UNITY_DOWNLOAD_ARCHIVE_URL=https://unity3d.com/get-unity/download/archive
+
+# function 1
+infoln () { (
+  echo "$*" | sh -c "${stderrPipeInfo:?}"
+)}
+errorln () { (
+  echo "$*" | sh -c "${stderrPipeError:?}"
+)}
+getHTTPStatus () { (
+  curl -ILsS -o /dev/null -w "%{http_code}" "${1:?}"
+)}
+selectWritableDir () { (
+  for path in "${@:?}"; do
+    if [ -w "${path:?}" ]; then
+      echo -n "${path:?}"
+      return 0
+    fi
+  done
+  errorln "no writable directory in: $*"
+  return 1
+)}
+isUbuntu () { (
+  if uname -s | grep -q Linux && command -v apt-get 1>/dev/null; then
+    return 0
+  fi
+  return 1
+)}
+checkSupportOS () { (
+  if ! isUbuntu; then
+    errorln "OS not supported."
+    exit 1
+  fi
+)}
+resolveDependenciesForCreateOrUpdateUnitySetupURLCSVFile () { (
+  if ! command -v curl 1>/dev/null; then
+    cmd="${apt_update_cmd:?}; apt-get install -y curl sudo" && infoln "Run: ${cmd:?}" && $(command -v sudo) sh -c "${cmd:?}"
+  fi
+)}
+resolveDependenciesForInstallUnity () { (
+  if ! command -v apt-file 1>/dev/null; then
+    cmd="${apt_update_cmd:?}; apt-get install -y apt-file" && infoln "Run: ${cmd:?}" && sudo -E sh -c "${cmd:?}"
+  fi
+)}
+
+# var 1
+separator=$(printf '\t')                                      && declare -r Separator="${separator:?}" && export Separator
+progDir=$(cd "$(dirname "$0")" && pwd || exit 1)              && declare -r ProgDir="${progDir:?}"     && export ProgDir
+
+# var 2
+csvStoreDir=$(selectWritableDir "${HOME:?}" "${ProgDir:?}")   && declare -r CSVStoreDir="${csvStoreDir:?}"                              && export CSVStoreDir
+: noop                                                        && declare -r UnitySetupURLCSVFile="${CSVStoreDir:?}/.${PROG_NAME:?}.csv" && export UnitySetupURLCSVFile
+setupsBaseDir=$(selectWritableDir "${HOME:?}" "${ProgDir:?}") && declare -r SetupsBaseDir="${setupsBaseDir:?}"                          && export SetupsBaseDir
+installBaseDir=$(selectWritableDir "${HOME:?}")               && declare -r InstallBaseDir="${installBaseDir:?}"                        && export InstallBaseDir
+
+
+
+createOrUpdateUnitySetupURLCSVFile () { (
+  resolveDependenciesForCreateOrUpdateUnitySetupURLCSVFile
+  # [ fource option ] || [ can't read ${UnitySetupURLCSVFile:?} ] || [ ${UnitySetupURLCSVFile:?} is empty ]
+  if [[ $* =~ .*-f.*|.*--fource.* ]] || [[ ! -r ${UnitySetupURLCSVFile:?} ]] || [[ ! -s ${UnitySetupURLCSVFile:?} ]]; then
+    infoln "Generating a UnitySetup URL csv file as ${UnitySetupURLCSVFile:?} ..."
+    (
+      # CSV header
+      printf "%s${Separator:?}%s${Separator:?}%s\n" "version" "status" "url"
+      # CSV data
+      curl -LsS "${UNITY_DOWNLOAD_ARCHIVE_URL:?}" \
+        | grep "href=\"unityhub://" \
+        | sed "s|^.*\"unityhub://\([^/]*\)/\([^\"]*\)\".*$|https://download.unity3d.com/download_unity/\2/UnitySetup-\1|" \
+        | while read -r url; do
+            printf "%s${Separator:?}%s${Separator:?}%s\n" "$(printf "%s" "${url}" | sed "s|.*/UnitySetup-||")" "$(getHTTPStatus "${url:?}")" "${url:?}"
+          done \
+        | if [[ $* =~ .*-q.*|.*--quiet.* ]]; then cat; else tee /dev/stderr; fi
+    ) >"${UnitySetupURLCSVFile:?}"
+  fi
+  infoln "UnitySetup URL csv file was saved as ${UnitySetupURLCSVFile:?}"
+)}
+
+
+
+resolveDependenciesForUnitySetup () { (
+  while true; do
+    cmd="$1"
+    # shellcheck disable=SC2015
+    infoln "Run: ${cmd:?}"
+    if resultUnitSetup=$(sh -c "${cmd:?}" 2>&1 | tee /dev/stderr); then  # NOTE(djeeno): cmd が正常終了した場合 break
+      break
+    fi
+    # lib
+    libName="$(echo "${resultUnitSetup:?}" | grep "error while loading shared libraries:" | cut -d: -f3 | tr -d "[:blank:]")"
+    if [[ ! $libName ]]; then  # NOTE(djeeno): インストールすべきライブラリが存在しなくなった場合 break
+      break
+    fi
+    cmd="apt-file search ${libName:?}" && infoln "Run: ${cmd:?}" && resultAptSearch=$(sudo -E sh -c "${cmd:?}" 2>&1 | tee /dev/stderr || true)
+    # Whether or not "apt-file update" is required.
+    if echo "${resultAptSearch:?}" | grep -q "^E: .*apt.*update"; then
+      cmd="apt-file update" && infoln "Run: ${cmd:?}" && sudo -E sh -c "${cmd:?}"
+      continue
+    fi
+    # Install packages that contain the string "linux-gnu" in their names in preference.
+    resultAptSearchEdited=$(echo "${resultAptSearch:?}" | grep "linux-gnu" || true; echo "${resultAptSearch:?}" | grep -v "linux-gnu" || true)
+    # install packages
+    echo "${resultAptSearchEdited:?}" | cut -d: -f1 | while read -r package; do
+      # Skip the installed packages.
+      if dpkg -l | grep -Eq "ii[[:blank:]]+${package:?}"; then
+        continue
+      fi
+      cmd="apt-get -y install ${package:?}" && infoln "Run: ${cmd:?}" && sudo -E sh -c "${cmd:?}"
+      break
+    done
+  done
+)}
+
+
+
+installUnity () { (
+  # [ doesn't have install subcommand and version ]
+  if [[ ! $* =~ install.*[[:blank:]]*[[:blank:]]+[^\.[:blank:]]+\.[^\.[:blank:]]+\.[^\.[:blank:]]+ ]]; then
+    errorln "Specify Unity version."
+    exit 1
+  fi
+  # [ can't read ${UnitySetupURLCSVFile:?} ] || [ ${UnitySetupURLCSVFile:?} is empty ]
+  if [[ ! -r ${UnitySetupURLCSVFile:?} ]] || [[ ! -s ${UnitySetupURLCSVFile:?} ]]; then
+    createOrUpdateUnitySetupURLCSVFile "$@"
+  fi
+  resolveDependenciesForInstallUnity
+  # vars
+  status=200
+  specified_version=$(printf '%s' "$*" | grep -Eo "[^\.[:blank:]]+\.[^\.[:blank:]]+\.[^\.[:blank:]]+")
+  csvRow=$(grep "^${specified_version//\./\\.}${Separator:?}${status:?}${Separator:?}" "${UnitySetupURLCSVFile:?}")
+  if [[ -z "${csvRow:?}" ]]; then
+    errorln "Specify the version of Unity that can be installed."
+    exit 1
+  fi
+  url=$(echo "${csvRow:?}" | cut -d"${Separator:?}" -f3)
+  unitySetupFileName=$(basename "${url:?}")
+  unitySetupDownloadDir="${SetupsBaseDir:?}/UnitySetup/${specified_version:?}" && mkdir -p "${unitySetupDownloadDir:?}"
+  unitySetupPath="${unitySetupDownloadDir:?}/${unitySetupFileName:?}"
+  unityInstallDir="${InstallBaseDir:?}/Unity/${specified_version:?}" && mkdir -p "${unityInstallDir:?}"
+  unityPath="${unityInstallDir:?}/Editor/Unity"
+  ##
+  # Install Unity Editor
+  ##
+  if [[ ! -x ${unityInstallDir:?}/Editor/Unity ]]; then
+    # download
+    cmd="curl -LR '${url:?}' -z '${unitySetupPath:?}' -o '${unitySetupPath:?}' && chmod +x '${unitySetupPath:?}'"
+    infoln "Run: ${cmd:?}" && sh -c "${cmd:?}"
+    # install dependency
+    resolveDependenciesForUnitySetup "'${unitySetupPath:?}' --help"
+    # Install Unity Editor
+    cmd="yes y | '${unitySetupPath:?}' --unattended --download-location='${unitySetupDownloadDir:?}' --install-location='${unityInstallDir:?}'" && infoln "Run: ${cmd:?}" && sh -c "${cmd:?}"
+  fi
+
+  resolveDependenciesForUnitySetup "'${unityPath:?}' -nographics -batchmode -createManualActivationFile -logfile /dev/stdout -quit"
+)}
+
+
+
+listInstallableVersions () { (
+  if [[ ! -r ${UnitySetupURLCSVFile:?} ]] || [[ ! -s ${UnitySetupURLCSVFile:?} ]]; then
+    echo "UnitySetup URL csv file not found." | sh -c "${stderrPipeWarn:?}"
+  fi
+  versions=$(
+    grep -E "[^${Separator:?}]+${Separator:?}200${Separator:?}[^${Separator:?}]+" "${UnitySetupURLCSVFile:?}" \
+      | awk -F"${Separator:?}" "{print \$1}"
+  )
+  if [[ $* =~ .*-1.*|.*--one-column.* ]]; then
+    echo "${versions}"
+  elif command -v column 1>/dev/null; then
+    echo "${versions}" | column
+  else
+    echo "${versions}"
+  fi
+)}
+
+
+
+Usage () { (
+  cat << USAGE
+${PROG_NAME:?} is a tool for helping to install Unity to Linux.
+
+Usage:
+
+    ${PROG_NAME:?} <command> [arguments]
+
+The commands are:
+
+    init
+      create or update UnitySetup URL csv file as ${UnitySetupURLCSVFile:?}
+
+        options
+            -f, --fource
+                Fource update
+            -q, --quiet
+                Suppress csv content output
+
+    install
+      install specified version Unity
+
+        arguments
+            <version>
+                Unity version
+
+        options
+            -y, --yes
+                Automatic yes to prompts
+
+    list
+      list installable Unity versions
+
+        options
+            -1, --one-column
+                If you want to output a single column, add this option
+
+USAGE
+)}
+
+
+
+main () {
+  checkSupportOS
+  case "$1" in
+  init)
+    createOrUpdateUnitySetupURLCSVFile "$@"
+    ;;
+  install)
+    installUnity "$@"
+    ;;
+  list|list-versions)
+    listInstallableVersions "$@"
+    ;;
+  *)
+    Usage
+    ;;
+  esac
+} && main "$@"
