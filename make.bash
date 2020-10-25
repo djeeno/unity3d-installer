@@ -51,7 +51,8 @@ task-test () {   ## テストを実行します。
     errorln "${PROG_NAME:?}: ${cmd:?}: command not found"
     return 1
   fi
-  docker run -it --rm --name workspace -v "$HOME/.ssh:/root/.ssh:ro" -v "$HOME/.vimrc:/root/.vimrc" -v "$HOME/.gitconfig:/root/.gitconfig" -v "$(git rev-parse --show-toplevel):$(git rev-parse --show-toplevel)" --workdir "$(git rev-parse --show-toplevel)" ubuntu:20.04 ./unityeditorinstaller install 2019.2.21f1
+  # shellcheck disable=SC2016
+  cmd='docker run -it --rm --name workspace -v "$HOME/.ssh:/root/.ssh:ro" -v "$HOME/.vimrc:/root/.vimrc" -v "$HOME/.gitconfig:/root/.gitconfig" -v "$(git rev-parse --show-toplevel):$(git rev-parse --show-toplevel)" --workdir "$(git rev-parse --show-toplevel)" ubuntu:20.04 ./unityeditorinstaller install 2019.2.21f1' && infoln "RUN: ${cmd:?}" && bash -c "${cmd:?}"
 }
 
 main () { (
