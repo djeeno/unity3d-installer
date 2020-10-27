@@ -46,18 +46,18 @@ isUbuntu () { (
 )}
 checkSupportOS () { (
   if ! isUbuntu; then
-    errorln "OS not supported."
+    errorln "OS not supported: $(uname -s)"
     exit 1
   fi
 )}
 resolveDependenciesForCreateOrUpdateUnitySetupURLCSVFile () { (
   if ! command -v curl 1>/dev/null; then
-    cmd="${apt_update_cmd:?}; apt-get install -y curl sudo" && infoln "Run: ${cmd:?}" && $(command -v sudo) sh -c "${cmd:?}"
+    cmd="apt-get install -y curl sudo" && infoln "Run: ${cmd:?}" && $(command -v sudo) sh -c "${apt_update_cmd:?}; ${cmd:?}"
   fi
 )}
 resolveDependenciesForInstallUnity () { (
   if ! command -v apt-file 1>/dev/null; then
-    cmd="${apt_update_cmd:?}; apt-get install -y apt-file" && infoln "Run: ${cmd:?}" && sudo -E sh -c "${cmd:?}"
+    cmd="apt-get install -y apt-file" && infoln "Run: ${cmd:?}" && sudo -E sh -c "${apt_update_cmd:?}; ${cmd:?}"
   fi
 )}
 

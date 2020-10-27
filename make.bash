@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eE -o pipefail
+set -Ee -o pipefail
 
 export  stderrPipeDebug="awk \"{print \\\"\\\\033[00m\$(date +%Y-%m-%dT%H:%M:%S%z) [  debug] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
 export stderrPipeNotice="awk \"{print \\\"\\\\033[01m\$(date +%Y-%m-%dT%H:%M:%S%z) [ notice] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
@@ -28,6 +28,11 @@ stderr () {(echo "$*" 1>&2)}
 commandNotFound () { (
   ! command -v "${1:?"commandNotFound: \$1 as command is required"}" >/dev/null
 )}
+runCmd () { (
+  cmd="${1:?"runCmd: \$1 as commands for bash -c option is required"}"
+  infoln "RUN: ${cmd:?}"
+  bash -c "${cmd:?}"
+)}
 
 outputHelp () { (
   WIDTH=48
@@ -42,17 +47,17 @@ outputHelp () { (
   stderr --------------------------------------------------------------------------------
 )}
 
-task-help () { (  ## このドキュメントを表示します。
+task-help () {  ## このドキュメントを表示します。
   outputHelp
-)}
+}
 
-task-test () {   ## テストを実行します。
+task-test () {  ## テストを実行します。
   if commandNotFound docker; then
-    errorln "${PROG_NAME:?}: ${cmd:?}: command not found"
+    errorln "${PROG_NAME:?}: docker: command not found"
     return 1
   fi
   # shellcheck disable=SC2016
-  cmd='docker run -it --rm --name workspace -v "$HOME/.ssh:/root/.ssh:ro" -v "$HOME/.vimrc:/root/.vimrc" -v "$HOME/.gitconfig:/root/.gitconfig" -v "$(git rev-parse --show-toplevel):$(git rev-parse --show-toplevel)" --workdir "$(git rev-parse --show-toplevel)" ubuntu:20.04 ./unityeditorinstaller install 2019.2.21f1' && infoln "RUN: ${cmd:?}" && bash -c "${cmd:?}"
+  runCmd 'docker run -it --rm --name workspace -v "$HOME/.ssh:/root/.ssh:ro" -v "$HOME/.vimrc:/root/.vimrc" -v "$HOME/.gitconfig:/root/.gitconfig" -v "$(git rev-parse --show-toplevel):$(git rev-parse --show-toplevel)" --workdir "$(git rev-parse --show-toplevel)" ubuntu:20.04 ./unityeditorinstaller install 2019.2.21f1'
 }
 
 main () { (
