@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -Ee -o pipefail
 
-export  stderrPipeDebug="awk \"{print \\\"\\\\033[00m\$(date +%Y-%m-%dT%H:%M:%S%z) [  debug] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
-export stderrPipeNotice="awk \"{print \\\"\\\\033[01m\$(date +%Y-%m-%dT%H:%M:%S%z) [ notice] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
-export  stderrPipeError="awk \"{print \\\"\\\\033[31m\$(date +%Y-%m-%dT%H:%M:%S%z) [  error] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
-export     stderrPipeOK="awk \"{print \\\"\\\\033[32m\$(date +%Y-%m-%dT%H:%M:%S%z) [     ok] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
-export   stderrPipeWarn="awk \"{print \\\"\\\\033[33m\$(date +%Y-%m-%dT%H:%M:%S%z) [warning] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
-export   stderrPipeInfo="awk \"{print \\\"\\\\033[34m\$(date +%Y-%m-%dT%H:%M:%S%z) [   info] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin 1>&2"
+# log
+export  pipe_debug="exec awk \"{print \\\"\\\\033[00m\$(date +%Y-%m-%dT%H:%M:%S%z) [ debug] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin" &&  debugln () { echo "${*:?"log content"}" | sh -c "${pipe_debug:?}"  1>&2; }
+export   pipe_info="exec awk \"{print \\\"\\\\033[34m\$(date +%Y-%m-%dT%H:%M:%S%z) [  info] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin" &&   infoln () { echo "${*:?"log content"}" | sh -c "${pipe_info:?}"   1>&2; }
+export     pipe_ok="exec awk \"{print \\\"\\\\033[32m\$(date +%Y-%m-%dT%H:%M:%S%z) [    ok] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin" &&     okln () { echo "${*:?"log content"}" | sh -c "${pipe_ok:?}"     1>&2; }
+export pipe_notice="exec awk \"{print \\\"\\\\033[01m\$(date +%Y-%m-%dT%H:%M:%S%z) [notice] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin" && noticeln () { echo "${*:?"log content"}" | sh -c "${pipe_notice:?}" 1>&2; }
+export   pipe_warn="exec awk \"{print \\\"\\\\033[33m\$(date +%Y-%m-%dT%H:%M:%S%z) [  warn] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin" &&   warnln () { echo "${*:?"log content"}" | sh -c "${pipe_warn:?}"   1>&2; }
+export  pipe_error="exec awk \"{print \\\"\\\\033[31m\$(date +%Y-%m-%dT%H:%M:%S%z) [ error] \\\"\\\$0\\\"\\\\033[0m\\\"}\" /dev/stdin" &&  errorln () { echo "${*:?"log content"}" | sh -c "${pipe_error:?}"  1>&2; }
 
 export apt_update_cmd="last=\$(stat /var/lib/apt/lists/* 2>/dev/null | awk -F\"Change:\" \"/Change:/ {print \\\$2}\" | sort | tail -n 1); [ 43200 -ge \$((\$(date +%s)-\$(date -d\"\${last:=1970-1-1}\" +%s))) ] || command apt update"
 
