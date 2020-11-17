@@ -30,9 +30,7 @@ commandNotFound () { (
   ! command -v "${1:?"commandNotFound: \$1 as command is required"}" >/dev/null
 )}
 runCmd () { (
-  cmd="${1:?"runCmd: \$1 as commands for bash -c option is required"}"
-  infoln "RUN: ${cmd:?}"
-  bash -c "${cmd:?}"
+  cmd="${1:?"runCmd: \$1 as commands for bash -c option is required"}" && infoln "RUN: ${cmd:?}" && bash -c "${cmd:?}"
 )}
 
 outputHelp () { (
